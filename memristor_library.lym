@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="utf-8"?>
+<klayout-macro>
+ <description/>
+ <version/>
+ <category>pymacros</category>
+ <prolog/>
+ <epilog/>
+ <doc/>
+ <autorun>true</autorun>
+ <autorun-early>false</autorun-early>
+ <shortcut/>
+ <show-in-menu>false</show-in-menu>
+ <group-name/>
+ <menu-path/>
+ <interpreter>python</interpreter>
+ <dsl-interpreter-name/>
+ <text>import pya
+import math
+
+
+def create_top_electrode(width, dbu, x_transform):
+  half_width_dbu = width / (dbu * 2)
+  x_transform_dbu = x_transform / dbu
+  
+  pts = [
+      pya.Point(-75000+x_transform_dbu, 40000),
+      pya.Point(-75000+x_transform_dbu, 190000),
+      pya.Point(-half_width_dbu+x_transform_dbu, 265000),
+      pya.Point(-half_width_dbu+x_transform_dbu, 315000),
+      pya.Point(half_width_dbu+x_transform_dbu, 315000),
+      pya.Point(half_width_dbu+x_transform_dbu, 265000),
+      pya.Point(75000+x_transform_dbu, 190000),
+      pya.Point(75000+x_transform_dbu, 40000)]
+      
+  return pya.Polygon(pts)
+  
+  
+### WARNING: I have not considered any other value than 9 for the parameter memristor_num
+###           So that is to say that no other value will behave as expected
+def create_bottom_electrode(dielectric_width, memristor_num, width, dbu, x_transform, y_transform, self):
+
+
+  # creates a 50 micron wide section for between the top electrodes
+  def section_points(direction_right, x_pos, medial, lateral):
+    if direction_right:
+      sec_pts = [
+        pya.Point(x_pos, medial),
+        pya.Point((x_pos+lateral-medial), lateral),
+        pya.Point((x_pos+50000-lateral+medial), lateral),
+        pya.Point((x_pos+50000), medial)]
+      
+    else:
+      sec_pts = [
+        pya.Point(x_pos+50000, -medial),
+        pya.Point(x_pos+50000-lateral+medial, -lateral),
+        pya.Point(x_pos+lateral-medial, -lateral),
+        pya.Point(x_pos, -medial)]
+    
+    return sec_pts
+      
+  
+  section_num = memristor_num-1
+  dielectric_end_x_dbu = dielectric_width / (dbu * 2)
+  half_width_dbu = width / (dbu * 2)
+  
+  
+  pts = [
+    pya.Point(-dielectric_end_x_dbu-275000, 75000),
+    pya.Point(-dielectric_end_x_dbu-75000, 75000),
+    pya.Point(-dielectric_end_x_dbu, half_width_dbu)]
+      
+  sec_x_pos = -375000
+    
+  for sec in range(section_num):
+    pts.extend(section_points(True, sec_x_pos, half_width_dbu, 10000))
+    sec_x_pos += 100000
+    
+  right_side_pts = [
+    pya.Point(dielectric_end_x_dbu, half_width_dbu),
+    pya.Point(dielectric_end_x_dbu+75000, 75000),
+    pya.Point(dielectric_end_x_dbu+275000, 75000),
+    pya.Point(dielectric_end_x_dbu+275000, -75000),
+    pya.Point(dielectric_end_x_dbu+75000, -75000),
+    pya.Point(dielectric_end_x_dbu, -half_width_dbu)]
+    
+  pts.extend(right_side_pts)
+  
+  sec_x_pos -= 100000
+  for sec in range(section_num):
+    pts.extend(section_points(False, sec_x_pos, half_width_dbu, 10000))
+    sec_x_pos -= 100000
+  
+  left_end_pts = [
+    pya.Point(-dielectric_end_x_dbu, -half_width_dbu),
+    pya.Point(-dielectric_end_x_dbu-75000, -75000),
+    pya.Point(-dielectric_end_x_dbu-275000, -75000)]
+    
+  pts.extend(left_end_pts) 
+
+  transform = pya.DCplxTrans(0.001, 0, False, x_transform, y_transform)
+  self.cell.shapes(self.metal_1_layer).insert(transform.trans(pya.Polygon(pts)))
+  
+  
+def create_dielectric(width, height, dbu, x_transform, y_transform, self):
+  half_dbu_width = width / (2*dbu)
+  half_dbu_height = height / (2*dbu)
+  pts = [
+    pya.Point(-half_dbu_width, half_dbu_height),
+    pya.Point(half_dbu_width, half_dbu_height),
+    pya.Point(half_dbu_width, -half_dbu_height),
+    pya.Point(-half_dbu_width, -half_dbu_height)]
+    
+  transform = pya.DCplxTrans(0.001, 0, False, x_transform, y_transform)
+  self.cell.shapes(self.dielectric_layer).insert(transform.trans(pya.Polygon(pts)))
+
+
+def create_electrode_row(electrode_num, inter_elec_distance, start_width, dw, dbu):
+  electrodes = []
+  for i in range(electrode_num):
+    width = (start_width + i*dw)
+    transform = i*inter_elec_distance
+
+    electrodes.append(create_top_electrode(width, dbu, transform))
+  return electrodes
+
+
+def create_memristor_set(bottom_electrode_width, x_transform, y_transform, self):
+
+  dielectric_width = 100.0*8 + 2*math.sqrt(50**2-25**2)
+  
+  create_bottom_electrode(dielectric_width, 9, bottom_electrode_width, self.layout.dbu, x_transform, y_transform, self)
+  
+  create_dielectric(dielectric_width, 50, self.layout.dbu, x_transform, y_transform, self)
+    
+  top_electrode_row = create_electrode_row(5, 200.0, 0.2, 0.2, self.layout.dbu)
+  bottom_electrode_row = create_electrode_row(4, 200.0, 0.3, 0.2, self.layout.dbu)
+    
+  top_row_transform = pya.DCplxTrans(0.001, 0, True, -400+x_transform, 290+y_transform)
+  bottom_row_transform = pya.DCplxTrans(0.001, 0, False, -300+x_transform, -290+y_transform)
+    
+  for electrode in top_electrode_row:
+    self.cell.shapes(self.metal_2_layer).insert(top_row_transform.trans(electrode))
+      
+  for electrode in bottom_electrode_row:
+    self.cell.shapes(self.metal_2_layer).insert(bottom_row_transform.trans(electrode))
+
+
+
+#### classes begin
+
+class TopElectrode(pya.PCellDeclarationHelper):
+
+  def __init__(self):
+
+    super(TopElectrode, self).__init__()
+
+    self.param("l", self.TypeLayer, "Layer", default = pya.LayerInfo(3, 0))
+    self.param("width", self.TypeDouble, "Path width", default = 0.2)
+
+  def display_text_impl(self):
+    return "Top electrode(Width=" + str(self.width) + ")"
+  
+  def produce_impl(self):
+  
+    self.cell.shapes(self.l_layer).insert(create_top_electrode(self.width, self.layout.dbu, 0))
+    
+    
+    
+class BottomElectrode(pya.PCellDeclarationHelper):
+
+  def __init__(self):
+
+    super(BottomElectrode, self).__init__()
+
+    self.param("metal_1", self.TypeLayer, "Base metal layer", default = pya.LayerInfo(1, 0))
+    self.param("width", self.TypeDouble, "Path width", default = 0.2)
+
+  def display_text_impl(self):
+    return "Top electrode(Width=" + str(self.width) + ")"
+  
+  def produce_impl(self):
+    create_bottom_electrode(850, 9, self.width, self.layout.dbu, 0, 0, self)
+    
+
+    
+
+class TopElectrodeRow(pya.PCellDeclarationHelper):
+
+  def __init__(self):
+  
+    super(TopElectrodeRow, self).__init__()
+
+    self.param("l", self.TypeLayer, "Layer", default = pya.LayerInfo(3, 0))
+    self.param("distance", self.TypeDouble, "Distance between electrodes", default = 300.0)
+    self.param("dw", self.TypeDouble, "Change of path width per electrode", default = 0.1)
+    self.param("start_width", self.TypeDouble, "Width of the first electrode's path", default = 0.2)
+    self.param("electrode_num", self.TypeInt, "Number of electrodes", default = 1)     
+    
+  def display_text_impl(self):
+    return "Electrode row(N=" + str(self.electrode_num) + ")"
+    
+  def produce_impl(self):
+    
+    for electrode in create_electrode_row(self.electrode_num, self.distance, self.start_width, self.dw, self.layout.dbu):
+      self.cell.shapes(self.l_layer).insert(electrode)
+          
+
+class MemristorArray(pya.PCellDeclarationHelper):
+
+  def __init__(self):
+  
+    super(MemristorArray, self).__init__()
+
+    self.param("metal_1", self.TypeLayer, "Base metal layer", default = pya.LayerInfo(1, 0))
+    self.param("dielectric", self.TypeLayer, "dielectric layer", default = pya.LayerInfo(2, 0))
+    self.param("metal_2", self.TypeLayer, "Top metal layer", default = pya.LayerInfo(3, 0))
+    self.param("n_rows", self.TypeInt, "Number of rows", default = 1)
+    self.param("n_columns", self.TypeInt, "Number of columns", default = 1)
+    self.param("x_distance", self.TypeDouble, "Distance between columns", default = 2500.0)
+    self.param("y_distance", self.TypeDouble, "Distance between rows", default = 1250.0)
+    self.param("start_width", self.TypeDouble, "Width of the top row's bottom electrode", default = 0.2)
+    self.param("dw", self.TypeDouble, "Change in width of bottom electrode per row", default = 0.1)
+    
+    
+  def display_mustext_impl(self):
+    return "Memristor array" + str(self.electrode_num) + ")"
+    
+  def produce_impl(self):   
+    for j in range(self.n_columns):
+      for k in range(self.n_rows):
+        width = self.start_width+self.dw*k
+        create_memristor_set(width, j*self.x_distance,-k*self.y_distance,self)    
+    
+
+    
+    
+class MemLib(pya.Library):
+
+  def __init__(self):
+  
+    self.description = "Memristor Library"
+    
+    self.layout().register_pcell("Top electrode", TopElectrode())
+    self.layout().register_pcell("Top electrode row", TopElectrodeRow())
+    self.layout().register_pcell("Bottom electrode", BottomElectrode())
+    self.layout().register_pcell("Memristor array", MemristorArray())
+    
+    self.register("Memristor Library")
+
+MemLib()
+</text>
+</klayout-macro>
